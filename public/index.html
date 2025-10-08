@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrandMention Alert - Monitor Your Brand Across Social Media</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-chart-line"></i>
+                BrandMention Alert
+            </div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#demo" class="demo-link">Demo</a>
+                <a href="#docs" class="docs-link">API Docs</a>
+                <a href="#" class="cta-button">Get Started</a>
+            </div>
+        </div>
+        
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <h1>Monitor Your Brand Across Social Media</h1>
+                <p class="hero-subtitle">Track brand mentions, analyze sentiment, and get real-time alerts from Reddit, Twitter, and news sources with our powerful API.</p>
+                <div class="hero-buttons">
+                    <button class="btn-primary demo-scroll-btn">Try Live Demo</button>
+                    <button class="btn-secondary docs-scroll-btn">View API Docs</button>
+                </div>
+                <div class="hero-stats">
+                    <div class="stat">
+                        <div class="stat-number">1000+</div>
+                        <div class="stat-label">Mentions Tracked</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">99.9%</div>
+                        <div class="stat-label">Uptime</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">24/7</div>
+                        <div class="stat-label">Monitoring</div>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="code-window">
+                    <div class="window-header">
+                        <div class="window-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <div class="window-title">API Response</div>
+                    </div>
+                    <div class="code-content">
+                        <pre><code>{
+  "mentions": [
+    {
+      "platform": "reddit",
+      "content": "Love the new features!",
+      "sentiment": "positive",
+      "engagement": 245
+    }
+  ]
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <h2>Powerful Brand Monitoring Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <h3>Real-time Monitoring</h3>
+                    <p>Track brand mentions across multiple platforms in real-time with our robust API.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-chart-bar"></i>
+                    </div>
+                    <h3>Sentiment Analysis</h3>
+                    <p>Automatically classify mentions as positive, negative, or neutral with confidence scores.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-bell"></i>
+                    </div>
+                    <h3>Instant Alerts</h3>
+                    <p>Get notified immediately when your brand is mentioned with high engagement.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <h3>Rich Metadata</h3>
+                    <p>Access engagement metrics, user demographics, and platform-specific data.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live Demo Section -->
+    <section id="demo" class="demo">
+        <div class="container">
+            <h2>Live API Demo</h2>
+            <p class="section-subtitle">Test our API with real data from Reddit</p>
+            
+            <div class="demo-container">
+                <div class="demo-input">
+                    <input type="text" id="keywordInput" placeholder="Enter brand name (e.g., OpenAI, Tesla, Stripe)" value="OpenAI">
+                    <select id="limitInput">
+                        <option value="3">3 results</option>
+                        <option value="5">5 results</option>
+                        <option value="10">10 results</option>
+                    </select>
+                    <button id="testApiButton" class="btn-primary">
+                        <i class="fas fa-play"></i> Test API
+                    </button>
+                </div>
+                
+                <div class="demo-results">
+                    <div id="loading" class="loading hidden">
+                        <i class="fas fa-spinner fa-spin"></i> Searching for mentions...
+                    </div>
+                    <div id="results" class="results"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="pricing">
+        <div class="container">
+            <h2>Simple, Transparent Pricing</h2>
+            <p class="section-subtitle">Start free and scale as you grow</p>
+            
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="pricing-header">
+                        <h3>Free</h3>
+                        <div class="price">$0<span>/month</span></div>
+                    </div>
+                    <ul class="pricing-features">
+                        <li><i class="fas fa-check"></i> 100 searches/month</li>
+                        <li><i class="fas fa-check"></i> Reddit data only</li>
+                        <li><i class="fas fa-check"></i> Basic sentiment analysis</li>
+                        <li><i class="fas fa-times"></i> Email support</li>
+                    </ul>
+                    <button class="btn-outline">Get Started</button>
+                </div>
+                
+                <div class="pricing-card featured">
+                    <div class="popular-badge">Most Popular</div>
+                    <div class="pricing-header">
+                        <h3>Pro</h3>
+                        <div class="price">$29<span>/month</span></div>
+                    </div>
+                    <ul class="pricing-features">
+                        <li><i class="fas fa-check"></i> 5,000 searches/month</li>
+                        <li><i class="fas fa-check"></i> Reddit + Twitter data</li>
+                        <li><i class="fas fa-check"></i> Advanced sentiment analysis</li>
+                        <li><i class="fas fa-check"></i> Priority email support</li>
+                    </ul>
+                    <button class="btn-primary">Start Free Trial</button>
+                </div>
+                
+                <div class="pricing-card">
+                    <div class="pricing-header">
+                        <h3>Business</h3>
+                        <div class="price">$99<span>/month</span></div>
+                    </div>
+                    <ul class="pricing-features">
+                        <li><i class="fas fa-check"></i> 20,000 searches/month</li>
+                        <li><i class="fas fa-check"></i> All platforms included</li>
+                        <li><i class="fas fa-check"></i> Real-time webhooks</li>
+                        <li><i class="fas fa-check"></i> Phone & email support</li>
+                    </ul>
+                    <button class="btn-outline">Contact Sales</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+
+        <!-- Signup Section -->
+    <section id="signup" class="signup">
+        <div class="container">
+            <h2>Get Your Free API Key</h2>
+            <p class="section-subtitle">Start monitoring your brand in seconds. No credit card required.</p>
+            
+            <div class="signup-container">
+                <div class="signup-form-container">
+                    <form id="signupForm" class="signup-form">
+                        <div class="form-group">
+                            <label for="signupName">Your Name</label>
+                            <input type="text" id="signupName" placeholder="Enter your name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="signupEmail">Email Address</label>
+                            <input type="email" id="signupEmail" placeholder="Enter your email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="signupCompany">Company (Optional)</label>
+                            <input type="text" id="signupCompany" placeholder="Your company name">
+                        </div>
+                        <button type="submit" class="btn-primary large" id="signupButton">
+                            <i class="fas fa-key"></i> Get API Key
+                        </button>
+                    </form>
+                    
+                    <div id="signupResult" class="signup-result"></div>
+                </div>
+                
+                <div class="signup-benefits">
+                    <h3>What you get:</h3>
+                    <ul class="benefits-list">
+                        <li><i class="fas fa-check"></i> <strong>100 free searches</strong> per month</li>
+                        <li><i class="fas fa-check"></i> <strong>Real-time Reddit monitoring</strong></li>
+                        <li><i class="fas fa-check"></i> <strong>Sentiment analysis</strong> on all mentions</li>
+                        <li><i class="fas fa-check"></i> <strong>Full API access</strong> with documentation</li>
+                        <li><i class="fas fa-check"></i> <strong>Email support</strong> during beta</li>
+                        <li><i class="fas fa-check"></i> <strong>No credit card</strong> required</li>
+                    </ul>
+                    
+                    <div class="trust-badges">
+                        <div class="trust-item">
+                            <i class="fas fa-shield-alt"></i>
+                            <span>No spam, ever</span>
+                        </div>
+                        <div class="trust-item">
+                            <i class="fas fa-lock"></i>
+                            <span>Secure API keys</span>
+                        </div>
+                        <div class="trust-item">
+                            <i class="fas fa-rocket"></i>
+                            <span>Instant access</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- API Documentation -->
+        <!-- API Documentation -->
+    <section id="docs" class="documentation">
+        <div class="container">
+            <h2>API Documentation</h2>
+            <p class="section-subtitle">Integrate BrandMention Alert in minutes</p>
+            
+            <div class="docs-layout">
+                <div class="docs-sidebar-full">
+                    <div class="sidebar-section">
+                        <h4>Endpoints</h4>
+                        <a href="#search" class="doc-link active">Search Mentions</a>
+                        <a href="#authentication" class="doc-link">Authentication</a>
+                        <a href="#response" class="doc-link">Response Format</a>
+                    </div>
+                </div>
+                
+                <div class="docs-content-full">
+                    <div id="search" class="doc-section-full">
+                        <h3>Search Mentions</h3>
+                        <p>Search for brand mentions across platforms.</p>
+                        
+                        <div class="endpoint-full">
+                            <span class="method get">GET</span>
+                            <span class="url">/api/search?keyword=BRAND&limit=10</span>
+                        </div>
+                        
+                        <h4>Parameters</h4>
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>keyword</td>
+                                    <td>string</td>
+                                    <td>Brand name to search for (required)</td>
+                                </tr>
+                                <tr>
+                                    <td>limit</td>
+                                    <td>number</td>
+                                    <td>Number of results (1-50, default: 10)</td>
+                                </tr>
+                                <tr>
+                                    <td>platform</td>
+                                    <td>string</td>
+                                    <td>Platform to search: all, reddit, news</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <h4>Example Request</h4>
+                        <div class="code-block">
+                            <pre><code>curl -X GET "http://localhost:3000/api/search?keyword=OpenAI&limit=5" \
+  -H "X-API-Key: your-api-key"</code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Add Authentication Section -->
+                    <div id="authentication" class="doc-section-full">
+                        <h3>Authentication</h3>
+                        <p>All API requests require authentication using your API key.</p>
+                        
+                        <div class="endpoint-full">
+                            <span class="method get">HEADER</span>
+                            <span class="url">X-API-Key: your-api-key</span>
+                        </div>
+                        
+                        <h4>Getting Your API Key</h4>
+                        <p>After signing up, you'll find your API key in the dashboard. Keep it secure and never expose it in client-side code.</p>
+                        
+                        <div class="warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Important:</strong> Always use HTTPS and keep your API key confidential.
+                        </div>
+                    </div>
+
+                    <!-- Add Response Format Section -->
+                    <div id="response" class="doc-section-full">
+                        <h3>Response Format</h3>
+                        <p>All API responses follow a consistent JSON format.</p>
+                        
+                        <h4>Success Response</h4>
+                        <div class="code-block">
+                            <pre><code>{
+  "success": true,
+  "data": {
+    "mentions": [
+      {
+        "id": "mention_123",
+        "platform": "reddit",
+        "content": "Love the new features!",
+        "sentiment": "positive",
+        "engagement": 245,
+        "timestamp": "2024-01-15T10:30:00Z"
+      }
+    ],
+    "summary": {
+      "total": 15,
+      "positive": 12,
+      "negative": 2,
+      "neutral": 1
+    }
+  }
+}</code></pre>
+                        </div>
+                        
+                        <h4>Error Response</h4>
+                        <div class="code-block">
+                            <pre><code>{
+  "success": false,
+  "error": {
+    "code": 401,
+    "message": "Invalid API key",
+    "details": "The provided API key is invalid or expired"
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <div class="container">
+            <h2>Start Monitoring Your Brand Today</h2>
+            <p>Join developers and businesses tracking their brand reputation across social media.</p>
+            <div class="cta-buttons">
+                <button class="btn-primary large">Get API Key</button>
+                <a href="documentation.html" class="btn-secondary large">View Full Documentation</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>BrandMention Alert</h4>
+                    <p>Powerful API for brand monitoring and sentiment analysis across social media platforms.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Product</h4>
+                    <a href="#features">Features</a>
+                    <a href="#pricing">Pricing</a>
+                    <a href="#docs">API Docs</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <a href="#">Documentation</a>
+                    <a href="#">Contact</a>
+                    <a href="#">Status</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 BrandMention Alert. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
