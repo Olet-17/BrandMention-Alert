@@ -1,98 +1,84 @@
+// utils/reddit.js
 const axios = require('axios');
 
 class RedditAPI {
-  constructor() {
+  constructor(opts = {}) {
     this.baseURL = 'https://www.reddit.com';
-    this.userAgent = 'BrandMentionAlert/1.0.0';
+    this.userAgent =
+      opts.userAgent ||
+      'BrandMentionAlert/1.0 (+https://yourdomain.com; contact@yourdomain.com)';
   }
 
-  async search(keyword, limit = 25, sort = 'relevance') {
+  async search(keyword, limit = 25, sort = 'new', time = 'month') {
+    const params = {
+      q: keyword,
+      limit: Math.max(1, Math.min(100, Number(limit) || 25)),
+      sort,                 // 'new' | 'relevance' | 'top' | 'comments'
+      t: time,              // 'hour'|'day'|'week'|'month'|'year'|'all'
+      raw_json: 1,          // proper JSON (no HTML entities)
+      include_over_18: 0,   // safer results
+      restrict_sr: false
+      // NOTE: intentionally NOT using "type: 'link'" (too restrictive)
+    };
+
+    const url = `${this.baseURL}/search.json`;
+
     try {
-      console.log(`🔍 Searching Reddit for: "${keyword}"`);
-      
-      const searchUrl = `${this.baseURL}/search.json`;
-      const params = {
-        q: keyword,
-        limit: Math.min(limit, 100),
-        sort: sort,
-        type: 'link',
-        restrict_sr: false
-      };
+      const { data } = await axios.get(url, {
+        params,
+        headers: {
+          'User-Agent': this.userAgent,
+          'Accept': 'application/json'
+        },
+        timeout: 15000
+      });
 
-      console.log('🌐 Making request to:', searchUrl);
-      console.log('📋 Parameters:', params);
-
-      const response = await axios.get(
-        searchUrl,
-        {
-          params: params,
-          headers: {
-            'User-Agent': this.userAgent
-          },
-          timeout: 10000
-        }
-      );
-
-      console.log('✅ Reddit API response received');
-      const results = this.formatSearchResults(response.data.data.children, keyword);
-      console.log(`📊 Found ${results.length} real Reddit mentions for "${keyword}"`);
-      
-      return results;
-    } catch (error) {
-      console.error('❌ Reddit search failed:');
-      console.error('   Error:', error.message);
-      if (error.response) {
-        console.error('   Status:', error.response.status);
-        console.error('   Data:', error.response.data);
-      }
-      return [];
+      const children = data?.data?.children || [];
+      console.log(`🟥 reddit children: ${children.length} for "${keyword}"`);
+      return this.formatSearchResults(children, keyword);
+    } catch (err) {
+      const status = err.response?.status;
+      const body = err.response?.data;
+      console.error('❌ Reddit fetch failed', status, body?.message || body);
+      // Do NOT silently return []; propagate so the route can 502 with details.
+      const e = new Error(`Reddit fetch failed${status ? ` (HTTP ${status})` : ''}`);
+      e.details = typeof body === 'string' ? body : JSON.stringify(body || {});
+      e.code = 'REDDIT_FETCH_FAILED';
+      throw e;
     }
   }
 
   formatSearchResults(posts, keyword) {
-    if (!posts || !Array.isArray(posts)) {
-      console.log('⚠️  No posts array received from Reddit');
-      return [];
-    }
-
-    console.log(`📨 Raw Reddit posts received: ${posts.length}`);
-
-    const filteredPosts = posts.filter(post => post && post.data && !post.data.stickied);
-    console.log(`📊 After filtering stickied posts: ${filteredPosts.length}`);
-
-    const results = filteredPosts.map(post => {
-      const data = post.data;
-      
-      const engagement = (data.ups || 0) + (data.num_comments || 0);
-      
-      return {
-        id: `reddit_${data.id}`,
-        platform: 'reddit',
-        title: data.title,
-        content: data.selftext || data.title,
-        author: data.author,
-        url: `https://reddit.com${data.permalink}`,
-        source: `r/${data.subreddit}`,
-        sentiment: 'neutral',
-        confidence: 0,
-        metadata: {
-          upvotes: data.ups,
-          comments: data.num_comments,
-          subreddit: data.subreddit,
-          score: data.score,
-          engagement: engagement,
-          created_utc: data.created_utc,
-          subreddit_subscribers: data.subreddit_subscribers
-        },
-        timestamp: new Date(data.created_utc * 1000).toISOString(),
-        keyword: keyword
-      };
-    }).filter(mention => mention.content && mention.content.length > 10);
-
-    console.log(`🎯 Final formatted results: ${results.length}`);
-    
-    return results;
+    if (!Array.isArray(posts)) return [];
+    return posts
+      .filter(p => p?.data && !p.data.stickied)
+      .map(({ data }) => {
+        const content = (data.selftext || data.title || '').trim();
+        const engagement = (data.ups || 0) + (data.num_comments || 0);
+        return {
+          id: `reddit_${data.id}`,
+          platform: 'reddit',
+          title: data.title,
+          content, // keep short content; don’t filter it out
+          author: data.author,
+          url: `https://reddit.com${data.permalink}`,
+          source: `r/${data.subreddit}`,
+          sentiment: 'neutral',
+          confidence: 0,
+          metadata: {
+            upvotes: data.ups,
+            comments: data.num_comments,
+            subreddit: data.subreddit,
+            score: data.score,
+            engagement,
+            created_utc: data.created_utc,
+            subreddit_subscribers: data.subreddit_subscribers
+          },
+          timestamp: new Date(data.created_utc * 1000).toISOString(),
+          keyword
+        };
+      });
   }
 }
 
-module.exports = new RedditAPI();
+module.exports = RedditAPI; // use with: const Reddit = require('../utils/reddit'); new Reddit();

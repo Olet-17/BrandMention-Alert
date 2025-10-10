@@ -1,27 +1,35 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const crypto = require('crypto');
+const swaggerUI = require('swagger-ui-express');
+const YAML = require('yamljs');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
+const openapi = YAML.load(path.join(__dirname, 'openapi.yaml'));
 const config = require('./config');
 const connectDB = require('./config/database');
 const User = require('./models/User');
-const authMiddleware = require('./middleware/auth');
+
 const searchRoutes = require('./routes/search');
+const keyRoutes = require('./routes/keys');                 // 🔑 add this
+const authenticateApiKey = require('./middleware/auth');    // hash-based
+const { randomKey, sha256Hex } = require('./utils/keys');
 
 const app = express();
 
-// Connect to MongoDB
+// -----------------------------
+// DB
+// -----------------------------
 connectDB();
 
-// Temporary in-memory storage as fallback
+// -----------------------------
+// Memory test user (for demos)
+// -----------------------------
 const memoryUsers = new Map();
-
-// ADD TEST API KEY TO MEMORY
 memoryUsers.set('test-key-123', {
   userId: 'test-user',
   email: 'demo@brandmentalert.com',
@@ -33,7 +41,9 @@ memoryUsers.set('test-key-123', {
   createdAt: new Date().toISOString()
 });
 
-// Middleware - Configure helmet to allow inline scripts for landing page
+// -----------------------------
+// Security / JSON / Static
+// -----------------------------
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -45,186 +55,156 @@ app.use(helmet({
     }
   }
 }));
-
 app.use(cors());
 app.use(express.json());
-
-// Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.max,
+// -----------------------------
+// Global (free) IP limiter 60/hr
+// -----------------------------
+const ipLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: false,
+  legacyHeaders: true,
   message: {
     error: 'Too many requests, please try again later.',
-    details: `Rate limit exceeded. Maximum ${config.rateLimit.max} requests per hour.`
+    details: 'Rate limit exceeded. Maximum 60 requests per hour.'
   }
 });
-app.use(limiter);
+app.use(ipLimiter);
 
-// FIXED authentication middleware - checks both database and memory
-const createAuthMiddleware = () => {
-  return async (req, res, next) => {
-    const apiKey = req.headers['x-api-key'];
-    
-    if (!apiKey) {
-      return res.status(401).json({
-        error: 'API key required',
-        details: 'Please provide an API key in the X-API-Key header'
-      });
-    }
+// -----------------------------
+// Swagger
+// -----------------------------
+app.get('/openapi.json', (_req, res) => res.json(openapi));
+app.use('/docs', swaggerUI.serve, swaggerUI.setup(openapi, {
+  customSiteTitle: 'BrandMention Alert API Docs',
+  swaggerOptions: { persistAuthorization: true }
+}));
 
-    try {
-      let userData;
-
-      // First check memory storage (for test key and cached users)
-      userData = memoryUsers.get(apiKey);
-
-      // If not found in memory, check database
-      if (!userData && mongoose.connection.readyState === 1) {
-        const user = await User.findOne({ apiKey, isActive: true });
-        if (user) {
-          userData = {
-            userId: user._id,
-            email: user.email,
-            name: user.name,
-            company: user.company,
-            plan: user.plan,
-            searches: user.searches,
-            searchesThisMonth: user.searchesThisMonth,
-            createdAt: user.createdAt
-          };
-          // Cache in memory for future requests
-          memoryUsers.set(apiKey, userData);
-        }
-      }
-
-      if (!userData) {
-        return res.status(401).json({
-          error: 'Invalid API key',
-          details: 'The provided API key is invalid or inactive.'
-        });
-      }
-
-      // Check if user has searches remaining (only for database users)
-      if (mongoose.connection.readyState === 1 && userData.userId !== 'test-user') {
-        const user = await User.findOne({ apiKey });
-        if (user && !user.hasSearchesRemaining()) {
-          return res.status(429).json({
-            error: 'Monthly search limit exceeded',
-            details: `You've used all ${user.searchesThisMonth} searches for this month. Upgrade your plan for more searches.`
-          });
-        }
-      }
-
-      req.user = userData;
-      req.apiKey = apiKey;
-      req.useDatabase = mongoose.connection.readyState === 1 && userData.userId !== 'test-user';
-      next();
-
-    } catch (error) {
-      console.error('Auth middleware error:', error);
-      res.status(500).json({
-        error: 'Authentication failed',
-        details: 'Please try again later'
-      });
-    }
-  };
+// -----------------------------
+// Test-key adapter + hash auth
+// If X-API-Key is the test key, short-circuit to memory user.
+// Otherwise, fall through to hash-based DB auth.
+// -----------------------------
+const testKeyOrAuth = async (req, res, next) => {
+  const apiKeyRaw = req.header('X-API-Key') || req.query.api_key;
+  if (apiKeyRaw && memoryUsers.has(apiKeyRaw)) {
+    const u = memoryUsers.get(apiKeyRaw);
+    req.user = { ...u };                   // userId='test-user'
+    req.apiKeyHash = sha256Hex(apiKeyRaw); // so limiter uses hash
+    req.apiKeyPrefix = apiKeyRaw.slice(0, 8);
+    req.apiKeyRaw = apiKeyRaw;
+    req.useDatabase = false;
+    return next();
+  }
+  // DB path
+  return authenticateApiKey(req, res, () => {
+    req.useDatabase = true; // set a flag for usage tracker
+    return next();
+  });
 };
 
-// Use the fixed auth middleware
-const authMiddlewareWithDB = createAuthMiddleware();
+// -----------------------------
+// Paid per-key limiter (1000/day) keyed by HASH
+// -----------------------------
+const keyBuckets = new Map(); // keyHash -> { count, resetAt, limit }
+function nextMidnightUTC() {
+  const n = new Date();
+  return +new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1));
+}
+function paidKeyLimiter(req, res, next) {
+  if (!(req.user && req.user.plan === 'paid')) return next();
 
-// Signup endpoint with database
+  const keyHash = req.apiKeyHash;
+  if (!keyHash) {
+    return res.status(401).json({ error: 'Invalid API key' });
+  }
+
+  const bucketKey = `key:${keyHash}`;
+  const limit = 1000;
+  const now = Date.now();
+
+  let b = keyBuckets.get(bucketKey);
+  if (!b || now >= b.resetAt) {
+    b = { count: 0, resetAt: nextMidnightUTC(), limit };
+    keyBuckets.set(bucketKey, b);
+  }
+
+  b.count += 1;
+  const remaining = Math.max(0, b.limit - b.count);
+
+  res.setHeader('X-RateLimit-Limit', String(b.limit));
+  res.setHeader('X-RateLimit-Remaining', String(remaining));
+  res.setHeader('X-RateLimit-Reset', String(Math.floor(b.resetAt / 1000)));
+
+  if (b.count > b.limit) {
+    res.setHeader('Retry-After', String(Math.ceil((b.resetAt - now) / 1000)));
+    return res.status(429).json({ error: 'Daily key rate limit exceeded' });
+  }
+  next();
+}
+
+// -----------------------------
+// Signup (secure: hash + prefix, show full key once)
+// Better 11000 handling to reveal which field collided.
+// -----------------------------
 app.post('/api/signup', express.json(), async (req, res) => {
   try {
     const { email, name, company } = req.body;
-    
-    console.log('📝 Signup attempt:', { email, name, company });
-    
     if (!email || !name) {
-      return res.status(400).json({ 
-        error: 'Name and email required',
-        details: 'Please provide both name and email address'
-      });
+      return res.status(400).json({ error: 'Name and email required' });
     }
 
-    // Generate API key
-    const apiKey = 'bm-' + crypto.randomBytes(16).toString('hex');
-    
-    try {
-      // Create user in database
-      const user = new User({
-        email: email.toLowerCase().trim(),
-        name: name.trim(),
-        company: company?.trim(),
-        apiKey: apiKey,
-        plan: 'beta'
-      });
+    const apiKey = randomKey();
+    const apiKeyHash = sha256Hex(apiKey);
+    const apiKeyPrefix = apiKey.slice(0, 8);
 
-      await user.save();
-      console.log('✅ New user registered in database:', user.email);
-
-      // Also store in memory as backup
-      memoryUsers.set(apiKey, {
-        userId: user._id,
-        email: user.email,
-        name: user.name,
-        company: user.company,
-        plan: user.plan,
-        searches: 0,
-        searchesThisMonth: 0,
-        createdAt: user.createdAt
-      });
-
-      res.json({
-        success: true,
-        message: 'Welcome to BrandMention Alert!',
-        apiKey: apiKey,
-        user: {
-          name: user.name,
-          email: user.email,
-          plan: user.plan
-        },
-        usage: {
-          searches: 0,
-          searchesThisMonth: 0,
-          limit: 100,
-          remaining: 100,
-          reset: 'monthly'
-        },
-        nextSteps: [
-          'Use your API key in the X-API-Key header',
-          'Check the documentation for usage examples',
-          'Join our community for support'
-        ]
-      });
-      
-    } catch (dbError) {
-      if (dbError.code === 11000) {
-        // Duplicate key error
-        return res.status(409).json({
-          error: 'Email already registered',
-          details: 'This email address is already associated with an API key'
-        });
-      }
-      throw dbError;
-    }
-    
-  } catch (error) {
-    console.error('❌ Signup error:', error);
-    res.status(500).json({
-      error: 'Signup failed',
-      details: 'Please try again later'
+    const user = new User({
+      email: email.toLowerCase().trim(),
+      name: name.trim(),
+      company: company?.trim(),
+      plan: 'beta',
+      apiKeyHash,
+      apiKeyPrefix,
+      apiKeyCreatedAt: new Date()
     });
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Welcome to BrandMention Alert!',
+      apiKey, // show once
+      user: { name: user.name, email: user.email, plan: user.plan },
+      usage: { searches: 0, searchesThisMonth: 0, limit: 100, remaining: 100, reset: 'monthly' }
+    });
+  } catch (err) {
+    console.error('Signup DB error:', {
+      code: err.code,
+      keyValue: err.keyValue,
+      keyPattern: err.keyPattern,
+      message: err.message
+    });
+
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue || err.keyPattern || {})[0] || 'email';
+      const msg = field === 'apiKeyHash'
+        ? 'Key collision on apiKeyHash (check key generation).'
+        : 'Email already registered';
+      return res.status(409).json({ error: msg, field });
+    }
+    return res.status(500).json({ error: 'Signup failed', details: 'Please try again later' });
   }
 });
 
-// Get user info endpoint
-app.get('/api/user', authMiddlewareWithDB, async (req, res) => {
+// -----------------------------
+// Auth’d endpoints (user/usage)
+// Use testKeyOrAuth everywhere
+// -----------------------------
+app.get('/api/user', testKeyOrAuth, async (req, res) => {
   try {
-    // For test user, return mock data
     if (req.user.userId === 'test-user') {
       return res.json({
         user: {
@@ -235,22 +215,12 @@ app.get('/api/user', authMiddlewareWithDB, async (req, res) => {
           plan: 'beta',
           joined: new Date().toISOString()
         },
-        usage: {
-          totalSearches: 0,
-          monthlySearches: 0,
-          limit: 100,
-          remaining: 100
-        }
+        usage: { totalSearches: 0, monthlySearches: 0, limit: 100, remaining: 100 }
       });
     }
 
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({
-        error: 'User not found',
-        details: 'The user associated with this API key was not found'
-      });
-    }
+    const user = await User.findById(req.user._id || req.user.id || req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json({
       user: {
@@ -262,58 +232,101 @@ app.get('/api/user', authMiddlewareWithDB, async (req, res) => {
         joined: user.createdAt
       },
       usage: {
-        totalSearches: user.searches,
-        monthlySearches: user.searchesThisMonth,
+        totalSearches: user.searches || 0,
+        monthlySearches: user.searchesThisMonth || 0,
         limit: 100,
-        remaining: user.getRemainingSearches()
+        remaining: user.getRemainingSearches?.()
       }
     });
   } catch (error) {
     console.error('User info error:', error);
-    res.status(500).json({
-      error: 'Failed to get user info',
-      details: 'Please try again later'
-    });
+    res.status(500).json({ error: 'Failed to get user info' });
   }
 });
 
-// Routes with database authentication
-app.use('/api/search', authMiddlewareWithDB, searchRoutes);
-
-// Update search route to track usage in database
-app.use('/api/search', authMiddlewareWithDB, async (req, res, next) => {
+app.get('/api/usage', testKeyOrAuth, async (req, res) => {
   try {
-    if (req.useDatabase) {
-      const user = await User.findById(req.user.userId);
-      if (user) {
-        // Update search counts
-        user.searches += 1;
-        user.searchesThisMonth += 1;
-        await user.save();
-        
-        console.log(`📊 Database usage tracked: ${user.email} - Total: ${user.searches}, Monthly: ${user.searchesThisMonth}, Remaining: ${user.getRemainingSearches()}`);
+    let usage;
+    if (req.user.userId === 'test-user') {
+      const u = memoryUsers.get(req.apiKeyRaw || 'test-key-123') || {};
+      usage = {
+        totalSearches: u.searches || 0,
+        monthlySearches: u.searchesThisMonth || 0,
+        limit: 100,
+        remaining: Math.max(0, 100 - (u.searchesThisMonth || 0))
+      };
+    } else {
+      const user = await User.findById(req.user._id || req.user.id || req.user.userId);
+      usage = {
+        totalSearches: user?.searches || 0,
+        monthlySearches: user?.searchesThisMonth || 0,
+        limit: 100,
+        remaining: user?.getRemainingSearches?.()
+      };
+    }
+
+    res.json({
+      userId: req.user.userId || req.user._id || req.user.id,
+      plan: req.user.plan,
+      usage,
+      rateLimit: {
+        freePerIpPerHour: 60,
+        paidPerKeyPerDay: 1000,
+        remaining: 'See X-RateLimit-Remaining header'
+      }
+    });
+  } catch (error) {
+    console.error('Usage endpoint error:', error);
+    res.status(500).json({ error: 'Failed to get usage data' });
+  }
+});
+
+// -----------------------------
+// Usage tracker (best-effort)
+// -----------------------------
+const searchUsageTracker = async (req, res, next) => {
+  try {
+    if (req.user.userId === 'test-user') {
+      const apiKeyRaw = req.apiKeyRaw || 'test-key-123';
+      const u = memoryUsers.get(apiKeyRaw);
+      if (u) {
+        u.searches = (u.searches || 0) + 1;
+        u.searchesThisMonth = (u.searchesThisMonth || 0) + 1;
+        memoryUsers.set(apiKeyRaw, u);
+        console.log(`📊 Memory usage: ${u.email} => total=${u.searches}, monthly=${u.searchesThisMonth}`);
       }
     } else {
-      // Memory usage tracking for test user
-      const userData = memoryUsers.get(req.apiKey);
-      if (userData) {
-        userData.searches = (userData.searches || 0) + 1;
-        userData.searchesThisMonth = (userData.searchesThisMonth || 0) + 1;
-        console.log(`📊 Memory usage tracked: ${userData.email} - Total: ${userData.searches}, Monthly: ${userData.searchesThisMonth}`);
+      const user = await User.findById(req.user._id || req.user.id || req.user.userId);
+      if (user) {
+        user.searches = (user.searches || 0) + 1;
+        user.searchesThisMonth = (user.searchesThisMonth || 0) + 1;
+        await user.save();
+        console.log(`📊 DB usage: ${user.email} => total=${user.searches}, monthly=${user.searchesThisMonth}`);
       }
     }
+  } catch (e) {
+    console.error('Usage tracking error:', e);
+  } finally {
     next();
-  } catch (error) {
-    console.error('Usage tracking error:', error);
-    next(); // Continue even if tracking fails
   }
-});
+};
 
-// Health check with database status
+// -----------------------------
+// /api/search chain
+// -----------------------------
+app.use('/api/search', testKeyOrAuth, paidKeyLimiter, searchUsageTracker, searchRoutes);
+
+// -----------------------------
+// 🔑 Key management routes
+// -----------------------------
+app.use('/api/keys', keyRoutes);
+
+// -----------------------------
+// Health / debug
+// -----------------------------
 app.get('/health', async (req, res) => {
   try {
     const dbConnected = mongoose.connection.readyState === 1;
-    
     let userCount = 0;
     if (dbConnected) {
       try {
@@ -335,12 +348,8 @@ app.get('/health', async (req, res) => {
         users: userCount,
         connectionState: mongoose.connection.readyState
       },
-      memory: {
-        users: memoryUserCount
-      },
-      stats: {
-        totalUsers: userCount + memoryUserCount
-      }
+      memory: { users: memoryUserCount },
+      stats: { totalUsers: userCount + memoryUserCount }
     });
   } catch (error) {
     res.json({
@@ -355,91 +364,13 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Root endpoint - serve the landing page
+// -----------------------------
+// Root / 404 / error handler
+// -----------------------------
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Usage endpoint
-app.get('/api/usage', authMiddlewareWithDB, async (req, res) => {
-  try {
-    let usage;
-    
-    if (req.useDatabase) {
-      const user = await User.findById(req.user.userId);
-      usage = {
-        totalSearches: user.searches,
-        monthlySearches: user.searchesThisMonth,
-        limit: 100,
-        remaining: user.getRemainingSearches()
-      };
-    } else {
-      const userData = memoryUsers.get(req.apiKey);
-      usage = {
-        totalSearches: userData.searches || 0,
-        monthlySearches: userData.searchesThisMonth || 0,
-        limit: 100,
-        remaining: Math.max(0, 100 - (userData.searchesThisMonth || 0))
-      };
-    }
-
-    res.json({
-      userId: req.user.userId,
-      plan: req.user.plan,
-      usage: usage,
-      rateLimit: {
-        requestsPerHour: config.rateLimit.max,
-        remaining: 'Check headers'
-      }
-    });
-  } catch (error) {
-    console.error('Usage endpoint error:', error);
-    res.status(500).json({
-      error: 'Failed to get usage data',
-      details: 'Please try again later'
-    });
-  }
-});
-
-// Debug endpoint to see all API keys (remove in production)
-app.get('/api/debug/keys', (req, res) => {
-  if (config.app.env !== 'development') {
-    return res.status(403).json({ error: 'Access denied' });
-  }
-
-  const memoryKeys = Array.from(memoryUsers.keys());
-  
-  User.find({}, 'apiKey email name').then(users => {
-    const dbKeys = users.map(user => ({
-      apiKey: user.apiKey,
-      email: user.email,
-      name: user.name
-    }));
-
-    res.json({
-      memory: {
-        count: memoryKeys.length,
-        keys: memoryKeys
-      },
-      database: {
-        count: dbKeys.length,
-        keys: dbKeys
-      }
-    });
-  }).catch(error => {
-    res.json({
-      memory: {
-        count: memoryKeys.length,
-        keys: memoryKeys
-      },
-      database: {
-        error: error.message
-      }
-    });
-  });
-});
-
-// 404 handler
 app.use('*', (req, res) => {
   if (req.originalUrl.startsWith('/api')) {
     return res.status(404).json({
@@ -450,7 +381,6 @@ app.use('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
   res.status(500).json({
@@ -459,18 +389,19 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
+// -----------------------------
+// Start
+// -----------------------------
 app.listen(config.app.port, () => {
   console.log(`
 🚀 ${config.app.name} v${config.app.version}
 📍 Server running on port ${config.app.port}
 🗄️  Database: ${process.env.MONGODB_URI ? 'MongoDB Atlas' : 'In-memory (fallback)'}
 🌐 Landing Page: http://localhost:${config.app.port}/
-🔍 API: http://localhost:${config.app.port}/api/search?keyword=test
-📝 Signup: http://localhost:${config.app.port}/#signup
-❤️  Health check: http://localhost:${config.app.port}/health
+🔎 API: http://localhost:${config.app.port}/api/search?keyword=test
+📘 Docs: http://localhost:${config.app.port}/docs
+❤️  Health: http://localhost:${config.app.port}/health
 🔑 Test API Key: test-key-123
-🔑 Memory API Keys: ${Array.from(memoryUsers.keys()).join(', ')}
   `);
 });
 

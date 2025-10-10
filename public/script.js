@@ -119,100 +119,78 @@ function displayResults(data) {
   console.log('🖼️ Displaying results in UI');
   const resultsDiv = document.getElementById("results");
 
-  if (!data.mentions || data.mentions.length === 0) {
-    console.log('📭 No mentions found for keyword:', data.keyword);
+  // Normalize array from various shapes
+  let items =
+    (Array.isArray(data) ? data : null) ||
+    data.results ||
+    data.mentions ||
+    data.items ||
+    (data.data && (data.data.results || data.data.mentions || data.data.items)) ||
+    [];
+
+  if (!Array.isArray(items)) items = [];
+
+  const keyword = data.keyword || '';
+  const total   = typeof data.count === 'number' ? data.count : items.length;
+
+  if (items.length === 0) {
+    console.log('📭 No mentions found for keyword:', keyword);
     resultsDiv.innerHTML = `
       <div style="text-align: center; color: #6b7280; padding: 2rem;">
-        No mentions found for "${data.keyword}". Try a different brand name.
+        No mentions found for "${keyword}". Try a different brand name.
         <br><small>Try: Tesla, Microsoft, Apple, Google, etc.</small>
       </div>
     `;
     return;
   }
 
-  console.log(`📊 Displaying ${data.mentions.length} mentions`);
-  
+  console.log(`📊 Displaying ${items.length} mentions`);
+
   let html = `
     <div style="margin-bottom: 1rem; color: #059669; font-weight: 600;">
-      Found ${data.totalResults} mentions for "${data.keyword}"
-      <br><small style="font-weight: normal; color: #6b7280;">Source: ${data.source || 'Reddit'}</small>
+      Found ${total} mentions for "${keyword}"
+      <br><small style="font-weight: normal; color: #6b7280;">Source: Reddit</small>
     </div>
   `;
 
-  data.mentions.forEach((mention, index) => {
-    console.log(`📄 Processing mention ${index + 1}:`, {
-      id: mention.id,
-      platform: mention.platform,
-      sentiment: mention.sentiment,
-      author: mention.author
-    });
+  items.forEach((mention, index) => {
+    const sentimentColor = ({
+      positive: "#10b981",
+      negative: "#ef4444",
+      neutral:  "#6b7280",
+    })[mention.sentiment] || "#6b7280";
 
-    const sentimentColor =
-      {
-        positive: "#10b981",
-        negative: "#ef4444",
-        neutral: "#6b7280",
-      }[mention.sentiment] || "#6b7280";
-
-    // Ensure content is properly formatted
-    const displayContent = mention.content 
-      ? (mention.content.length > 200 
-          ? mention.content.substring(0, 200) + "..." 
-          : mention.content)
+    const displayContent = mention.content
+      ? (mention.content.length > 200 ? mention.content.slice(0, 200) + "..." : mention.content)
       : "No content available";
 
-    const displayTitle = mention.title 
-      ? (mention.title.length > 100 
-          ? mention.title.substring(0, 100) + "..." 
-          : mention.title)
-      : (mention.content 
-          ? mention.content.substring(0, 80) + "..." 
-          : "No title");
+    const displayTitle = mention.title
+      ? (mention.title.length > 100 ? mention.title.slice(0, 100) + "..." : mention.title)
+      : (mention.content ? (mention.content.slice(0, 80) + "...") : "No title");
 
     html += `
-      <div style="
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        background: white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-      ">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; gap: 1rem; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 200px;">
-            <strong style="color: #1f2937; display: block; margin-bottom: 0.25rem; line-height: 1.4;">
-              ${displayTitle}
-            </strong>
-            <div style="font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem;">
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:1rem;margin-bottom:1rem;background:white;box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;gap:1rem;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <strong style="color:#1f2937;display:block;margin-bottom:0.25rem;line-height:1.4;">${displayTitle}</strong>
+            <div style="font-size:.875rem;color:#6b7280;margin-top:.25rem;">
               by ${mention.author || 'Unknown'} in ${mention.source || 'Unknown'}
             </div>
           </div>
-          <span style="
-            background: ${sentimentColor};
-            color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            white-space: nowrap;
-            height: fit-content;
-          ">
-            ${mention.sentiment} (${(mention.confidence * 100).toFixed(0)}%)
+          <span style="background:${sentimentColor};color:white;padding:.25rem .75rem;border-radius:20px;font-size:.75rem;font-weight:600;text-transform:uppercase;white-space:nowrap;height:fit-content;">
+            ${mention.sentiment || 'neutral'} (${((mention.confidence || 0) * 100).toFixed(0)}%)
           </span>
         </div>
-        
-        <div style="color: #4b5563; margin-bottom: 0.75rem; line-height: 1.5; font-size: 0.9rem;">
+
+        <div style="color:#4b5563;margin-bottom:.75rem;line-height:1.5;font-size:.9rem;">
           ${displayContent}
         </div>
-        
-        <div style="display: flex; gap: 1rem; font-size: 0.875rem; color: #6b7280; flex-wrap: wrap; align-items: center;">
-          <span title="Upvotes">👍 ${mention.metadata?.upvotes || 0}</span>
-          <span title="Comments">💬 ${mention.metadata?.comments || 0}</span>
-          <span title="Post date">🕒 ${new Date(mention.timestamp).toLocaleDateString()}</span>
-          <a href="${mention.url}" target="_blank" style="color: #2563eb; text-decoration: none; font-weight: 500;">
-            🔗 View Original
-          </a>
+
+        <div style="display:flex;gap:1rem;font-size:.875rem;color:#6b7280;flex-wrap:wrap;align-items:center;">
+          <span>👍 ${mention.metadata?.upvotes || 0}</span>
+          <span>💬 ${mention.metadata?.comments || 0}</span>
+          <span>🕒 ${mention.timestamp ? new Date(mention.timestamp).toLocaleDateString() : ''}</span>
+          <a href="${mention.url}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:none;font-weight:500;">🔗 View Original</a>
         </div>
       </div>
     `;
@@ -221,6 +199,7 @@ function displayResults(data) {
   resultsDiv.innerHTML = html;
   console.log('✅ Results displayed successfully');
 }
+
 
 // Signup functionality
 async function signupUser(event) {

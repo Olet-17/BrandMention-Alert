@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: BrandMention Alert API
+  version: 1.0.0
+  description: |
+    Monitor brand mentions starting with Reddit, with auth, rate limits, and sentiment.
+servers:
+  - url: http://localhost:3000
+    description: Local
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    Mention:
+      type: object
+      properties:
+        id: { type: string, example: "reddit_abc123" }
+        platform: { type: string, example: "reddit" }
+        title: { type: string }
+        content: { type: string }
+        author: { type: string }
+        url: { type: string, format: uri }
+        source: { type: string, example: "r/Tesla" }
+        sentiment: { type: string, enum: [positive, neutral, negative], example: neutral }
+        confidence: { type: number, format: float, example: 0.72 }
+        metadata:
+          type: object
+          properties:
+            upvotes: { type: integer }
+            comments: { type: integer }
+            subreddit: { type: string }
+            score: { type: integer }
+            engagement: { type: integer }
+            created_utc: { type: number }
+            subreddit_subscribers: { type: integer }
+        timestamp: { type: string, format: date-time }
+        keyword: { type: string }
+    SearchResponse:
+      type: object
+      properties:
+        keyword: { type: string }
+        count: { type: integer }
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Mention'
+    SignupRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        company: { type: string }
+    SignupResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        apiKey: { type: string, example: "bm_xxxxxx..." }
+        user:
+          type: object
+          properties:
+            name: { type: string }
+            email: { type: string }
+            plan: { type: string, example: "beta" }
+        usage:
+          type: object
+          properties:
+            searches: { type: integer }
+            searchesThisMonth: { type: integer }
+            limit: { type: integer }
+            remaining: { type: integer }
+            reset: { type: string, example: "monthly" }
+    UsageResponse:
+      type: object
+      properties:
+        userId: { type: string }
+        plan: { type: string }
+        usage:
+          type: object
+          properties:
+            totalSearches: { type: integer }
+            monthlySearches: { type: integer }
+            limit: { type: integer }
+            remaining: { type: integer }
+        rateLimit:
+          type: object
+          properties:
+            freePerIpPerHour: { type: integer, example: 60 }
+            paidPerKeyPerDay: { type: integer, example: 1000 }
+            remaining: { type: string, example: "See X-RateLimit-Remaining header" }
+
+paths:
+  /api/search:
+    get:
+      summary: Search brand mentions
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: query
+          name: keyword
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: platform
+          required: false
+          schema: { type: string, enum: [all, reddit], default: all }
+        - in: query
+          name: sort
+          required: false
+          schema: { type: string, enum: [new, relevance, top, comments], default: new }
+        - in: query
+          name: time
+          required: false
+          schema: { type: string, enum: [hour, day, week, month, year, all], default: month }
+      responses:
+        '200':
+          description: Results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Invalid params
+        '401':
+          description: Missing/invalid API key
+        '429':
+          description: Rate limited
+        '502':
+          description: Upstream fetch failed
+
+  /api/signup:
+    post:
+      summary: Create a user & API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignupResponse' }
+        '409':
+          description: Email already registered
+
+  /api/usage:
+    get:
+      summary: Get current usage
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200':
+          description: Usage details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageResponse' }
+        '401':
+          description: Missing/invalid API key
+
+  /api/keys/rotate:
+    post:
+      summary: Rotate current API key
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200':
+          description: New key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey: { type: string }
+                  rotatedAt: { type: string, format: date-time }
+        '401':
+          description: Missing/invalid API key
