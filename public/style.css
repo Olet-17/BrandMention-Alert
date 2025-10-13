@@ -49,16 +49,18 @@ body {
     display: none;
     position: absolute;
     top: 100%;
-    left: 0;
+    left:  0;
     width: 100%;
     background: white;
     flex-direction: column;
     padding: 1rem;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+     justify-content: space-between;
 }
 
 .nav-links.active {
     display: flex;
+    
 }
 
 .nav-links a {

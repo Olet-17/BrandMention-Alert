@@ -41,11 +41,11 @@ async function testAPI() {
     loadingDiv: !!loadingDiv
   });
 
-  if (!keywordInput || !limitInput) {
-    console.error('❌ CRITICAL: Input elements not found!');
-    alert('Page not loaded properly. Please refresh.');
-    return;
-  }
+  // if (!keywordInput || !limitInput) {
+  //   console.error('❌ CRITICAL: Input elements not found!');
+  //   alert('Page not loaded properly. Please refresh.');
+  //   return;
+  // }
 
   const keyword = keywordInput.value.trim();
   const limit = limitInput.value;
