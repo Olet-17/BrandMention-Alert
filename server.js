@@ -106,6 +106,7 @@ const testKeyOrAuth = async (req, res, next) => {
   });
 };
 
+app.set("trust proxy", 1);
 // -----------------------------
 // Paid per-key limiter (1000/day) keyed by HASH
 // -----------------------------

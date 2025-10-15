@@ -40,6 +40,24 @@ router.get('/', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+
+
+
+  sendBrandMention({
+    keyword,
+    total,
+    items: results.map(r => ({
+      title: r.title,
+      url: r.url
+    }))
+  });
+
+  res.json({ keyword, count: total, results });
+
+
 });
+
+
+
 
 module.exports = router;
