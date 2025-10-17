@@ -1,0 +1,29 @@
+# docker-compose.yml
+version: "3.8"
+services:
+  api:
+    build: .
+    container_name: brandmention-api
+    ports:
+      - "3000:3000"
+    environment:
+      # === REQUIRED ENV ===
+      MONGODB_URI: "mongodb+srv://dwelorastore_db_user:NNx9xpprMzTclAVG@brandmention.ikhdfvv.mongodb.net/?retryWrites=true&w=majority&appName=BrandMention"
+      REDIS_URL: "redis://redis:6379"      # internal service name
+      NODE_ENV: "production"
+      # Optional: set APP_PORT if you use config.app.port, else default 3000
+      APP_PORT: "3000"
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: brandmention-redis
+    ports:
+      - "6379:6379"     # expose for debugging; not required
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+
+volumes:
+  redisdata:
