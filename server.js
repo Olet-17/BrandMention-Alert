@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const swaggerUI = require('swagger-ui-express');
+const paidKeyLimiter = require('./middleware/redisKeyLimiter');
 const YAML = require('yamljs');
 const mongoose = require('mongoose');
 require('dotenv').config();
@@ -115,37 +116,7 @@ function nextMidnightUTC() {
   const n = new Date();
   return +new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1));
 }
-function paidKeyLimiter(req, res, next) {
-  if (!(req.user && req.user.plan === 'paid')) return next();
 
-  const keyHash = req.apiKeyHash;
-  if (!keyHash) {
-    return res.status(401).json({ error: 'Invalid API key' });
-  }
-
-  const bucketKey = `key:${keyHash}`;
-  const limit = 1000;
-  const now = Date.now();
-
-  let b = keyBuckets.get(bucketKey);
-  if (!b || now >= b.resetAt) {
-    b = { count: 0, resetAt: nextMidnightUTC(), limit };
-    keyBuckets.set(bucketKey, b);
-  }
-
-  b.count += 1;
-  const remaining = Math.max(0, b.limit - b.count);
-
-  res.setHeader('X-RateLimit-Limit', String(b.limit));
-  res.setHeader('X-RateLimit-Remaining', String(remaining));
-  res.setHeader('X-RateLimit-Reset', String(Math.floor(b.resetAt / 1000)));
-
-  if (b.count > b.limit) {
-    res.setHeader('Retry-After', String(Math.ceil((b.resetAt - now) / 1000)));
-    return res.status(429).json({ error: 'Daily key rate limit exceeded' });
-  }
-  next();
-}
 
 // -----------------------------
 // Signup (secure: hash + prefix, show full key once)
